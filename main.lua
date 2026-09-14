@@ -630,4 +630,175 @@ task.spawn(function()
                         stuckPositionCount = 0
                     end
                     lastPosVector = hrp.Position
-               
+                    lastPositionCheck = tick()
+                end
+
+                if hrp.Position.Y < -50 then
+                    -- Если упали в пустоту — возвращаем наверх
+                    hrp.CFrame = CFrame.new(0, 50, 0)
+                    task.wait(1)
+                end
+
+                local container = GetCoinContainer()
+                if container then
+                    local children = container:GetChildren()
+                    local validCoins = {}
+                    
+                    for _, child in pairs(children) do
+                        if child and child.Parent then
+                            if child:IsA("BasePart") then
+                                table.insert(validCoins, child)
+                            else
+                                local part = child:FindFirstChildOfClass("BasePart")
+                                if part then table.insert(validCoins, part) end
+                            end
+                        end
+                    end
+
+                    if #validCoins > 0 then
+                        local closestCoin = nil
+                        local minDistance = math.huge
+
+                        for _, coin in ipairs(validCoins) do
+                            if coin and coin.Parent then
+                                local dist = (hrp.Position - coin.Position).Magnitude
+                                if dist < minDistance then
+                                    minDistance = dist
+                                    closestCoin = coin
+                                end
+                            end
+                        end
+
+                        if closestCoin and closestCoin.Parent then
+                            local speed = Flags.FarmSpeed or 60
+                            local tweenTime = math.clamp(minDistance / speed, 0.05, 3.5)
+
+                            for _, part in pairs(char:GetChildren()) do
+                                if part:IsA("BasePart") then part.CanCollide = false end
+                            end
+
+                            local tweenInfo = TweenInfo.new(tweenTime, Enum.EasingStyle.Linear)
+                            CurrentTween = TweenService:Create(hrp, tweenInfo, {CFrame = closestCoin.CFrame})
+                            CurrentTween:Play()
+
+                            local startFly = tick()
+                            local collected = false
+                            
+                            while (tick() - startFly) < (tweenTime + 0.2) and Flags.AutoFarm and Running do
+                                RunService.Stepped:Wait()
+                                hrp.Velocity = Vector3.new(0, 0, 0)
+                                
+                                if closestCoin and closestCoin.Parent then
+                                    if (hrp.Position - closestCoin.Position).Magnitude <= 5 then
+                                        firetouchinterest(hrp, closestCoin, 0)
+                                        firetouchinterest(hrp, closestCoin, 1)
+                                        collected = true
+                                        break
+                                    end
+                                else
+                                    break
+                                end
+                            end
+
+                            if CurrentTween then
+                                pcall(function() CurrentTween:Cancel() end)
+                            end
+
+                            if not collected and closestCoin and closestCoin.Parent then
+                                -- Принудительный долет, если твин не дошел до конца из-за лагов сервера
+                                hrp.CFrame = closestCoin.CFrame
+                                firetouchinterest(hrp, closestCoin, 0)
+                                firetouchinterest(hrp, closestCoin, 1)
+                                task.wait(0.05)
+                            end
+                        else
+                            task.wait(0.2)
+                        end
+                    else
+                        -- Монет нет на карте (ожидание нового раунда / конца таймера)
+                        task.wait(0.5)
+                    end
+                else
+                    -- Контейнер монет еще не появился (начало матча или лобби)
+                    task.wait(1)
+                end
+            end)
+        else
+            task.wait(0.5)
+        end
+        RunService.Stepped:Wait()
+    end
+end)
+
+-- Автоматический Anti-AFK (Борьба с киком Roblox через 20 минут бездействия)
+local VirtualUser = game:GetService("VirtualUser")
+LocalPlayer.Idled:Connect(function()
+    pcall(function()
+        VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end)
+end)
+
+-- ESP
+Connections.ESP = RunService.RenderStepped:Connect(function()
+    if not Running then return end
+    pcall(function()
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local char = player.Character
+                local highlight = char:FindFirstChild("RoleHighlight")
+                
+                if Flags.ESP then
+                    if not highlight then
+                        highlight = Instance.new("Highlight")
+                        highlight.Name = "RoleHighlight"
+                        highlight.Parent = char
+                    end
+                    
+                    local role = GetPlayerRole(player)
+                    if role == "Murderer" then
+                        highlight.FillColor = Color3.fromRGB(255, 40, 40)
+                    elseif role == "Sheriff" then
+                        highlight.FillColor = Color3.fromRGB(40, 120, 255)
+                    else
+                        highlight.FillColor = Color3.fromRGB(40, 255, 120)
+                    end
+                    highlight.FillTransparency = 0.4
+                    highlight.Enabled = true
+                else
+                    if highlight then highlight.Enabled = false end
+                end
+            end
+        end
+    end)
+end)
+
+-- Физика
+Connections.Physics = RunService.Stepped:Connect(function()
+    if not Running then return end
+    pcall(function()
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                if Flags.WalkSpeedEnabled then hum.WalkSpeed = Flags.WalkSpeedValue end
+                if Flags.JumpPowerEnabled then hum.JumpPower = Flags.JumpPowerValue end
+            end
+            if Flags.Noclip then
+                for _, part in pairs(char:GetChildren()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+            end
+        end
+    end)
+end)
+
+-- Infinite Jump
+Connections.InfJump = UserInputService.JumpRequest:Connect(function()
+    pcall(function()
+        if Running and Flags.InfJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
+        end
+    end)
+end)
