@@ -1,5 +1,5 @@
 -- =======================================================
--- GAG22 LOADER v8.0.7 | MURDER MYSTERY 2 EDITION
+-- GAG22 LOADER v8.0.10 | MURDER MYSTERY 2 EDITION
 -- =======================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -27,7 +27,8 @@ local function LaunchGAG22Hub()
     local Flags = {
         KillAura = false, KillAuraRange = 20,
         SheriffAura = false, SheriffRange = 100,
-        ESP = false, AutoFarm = false, FarmSpeed = 60,
+        ESP = false, AutoFarm = false, FarmSpeed = 220,
+        AutoResume = true,
         Noclip = false, InfJump = false,
         WalkSpeedEnabled = false, WalkSpeedValue = 16,
         JumpPowerEnabled = false, JumpPowerValue = 50
@@ -156,7 +157,7 @@ local function LaunchGAG22Hub()
     local StatusText = Instance.new("TextLabel")
     StatusText.Size = UDim2.new(1, -20, 1, 0)
     StatusText.Position = UDim2.new(0, 10, 0, 0)
-    StatusText.Text = "READY | PLACE " .. tostring(game.PlaceId) .. " · GAG22 Hub v3.7"
+    StatusText.Text = "READY | PLACE " .. tostring(game.PlaceId) .. " · GAG22 Hub v3.96"
     StatusText.TextColor3 = Color3.fromRGB(120, 130, 145)
     StatusText.Font = Enum.Font.Gotham
     StatusText.TextSize = 11
@@ -296,12 +297,18 @@ local function LaunchGAG22Hub()
         KnobCorner.Parent = Knob
 
         local state = default
-        SwitchBg.MouseButton1Click:Connect(function()
-            state = not state
+        local function SetState(val)
+            state = val
             SwitchBg.BackgroundColor3 = state and Color3.fromRGB(0, 210, 255) or Color3.fromRGB(35, 45, 60)
             Knob.Position = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
             callback(state)
+        end
+
+        SwitchBg.MouseButton1Click:Connect(function()
+            SetState(not state)
         end)
+
+        return SetState
     end
 
     local function AddSlider(card, text, min, max, default, callback)
@@ -406,12 +413,14 @@ local function LaunchGAG22Hub()
     AddToggle(PhysCard, "Noclip", false, function(v) Flags.Noclip = v end)
     AddToggle(PhysCard, "Infinite Jump", false, function(v) Flags.InfJump = v end)
 
-    local FarmCard = CreateCard(FarmPage, "Auto Farm")
-    AddToggle(FarmCard, "Auto Collect Coins", false, function(v) 
+    -- Карточка Автофарма
+    local FarmCard = CreateCard(FarmPage, "Smart Auto Farm")
+    local SetFarmToggle = AddToggle(FarmCard, "Auto Collect Coins", false, function(v) 
         Flags.AutoFarm = v 
         if not v and CurrentTween then pcall(function() CurrentTween:Cancel() end) end
     end)
-    AddSlider(FarmCard, "Farm Speed", 30, 70, 60, function(v) Flags.FarmSpeed = v end)
+    AddToggle(FarmCard, "Auto Resume Next Round", true, function(v) Flags.AutoResume = v end)
+    AddSlider(FarmCard, "Farm Speed", 80, 400, 220, function(v) Flags.FarmSpeed = v end)
 
     local EspCard = CreateCard(VisualsPage, "Role ESP")
     AddToggle(EspCard, "Show Roles", false, function(v) Flags.ESP = v end)
@@ -431,6 +440,45 @@ local function LaunchGAG22Hub()
         game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
     end)
 
+    -- Вспомогательная функция проверки жизни персонажа
+    local function IsAlive(player)
+        player = player or LocalPlayer
+        local char = player.Character
+        if not char then return false end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        return hum and hum.Health > 0 and hrp ~= nil
+    end
+
+    -- Отслеживание смерти персонажа
+    local function SetupCharacterEvents(char)
+        if not char then return end
+        local hum = char:WaitForChild("Humanoid", 5)
+        if hum then
+            hum.Died:Connect(function()
+                if CurrentTween then
+                    pcall(function() CurrentTween:Cancel() end)
+                    CurrentTween = nil
+                end
+                
+                if not Flags.AutoResume then
+                    SetFarmToggle(false)
+                else
+                    Flags.AutoFarm = false
+                end
+            end)
+        end
+    end
+
+    if LocalPlayer.Character then SetupCharacterEvents(LocalPlayer.Character) end
+    table.insert(Connections, LocalPlayer.CharacterAdded:Connect(function(char)
+        SetupCharacterEvents(char)
+        if Flags.AutoResume then
+            Flags.AutoFarm = true
+            SetFarmToggle(true)
+        end
+    end))
+
     -- Вспомогательные функции ролей
     local function GetPlayerRole(player)
         if not player or not player.Character then return "Innocent" end
@@ -441,33 +489,61 @@ local function LaunchGAG22Hub()
         return "Innocent"
     end
 
-    -- Логика KillAura & SheriffAura & AutoFarm
+    -- Поиск убийцы для мгновенного телепорта и атаки
+    local function GetMurderer()
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and IsAlive(player) then
+                if GetPlayerRole(player) == "Murderer" then
+                    return player.Character
+                end
+            end
+        end
+        return nil
+    end
+
+    -- Логика KillAura & SheriffAura
     local lastKillAura = 0
     Connections.KillAura = RunService.RenderStepped:Connect(function()
-        if not Running or not Flags.KillAura then return end
-        if tick() - lastKillAura < 0.1 then return end
-        lastKillAura = tick()
+        if not Running or not Flags.KillAura or not IsAlive() then return end
+        
         pcall(function()
             local char = LocalPlayer.Character
-            if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+
             local backpack = LocalPlayer:FindFirstChild("Backpack")
             local knife = char:FindFirstChild("Knife") or (backpack and backpack:FindFirstChild("Knife"))
+            
             if knife then
                 if knife.Parent == backpack then
                     local hum = char:FindFirstChildOfClass("Humanoid")
                     if hum then hum:EquipTool(knife) end
                 end
-                local handle = knife:FindFirstChild("Handle")
-                if handle then
-                    for _, target in pairs(Players:GetPlayers()) do
-                        if target ~= LocalPlayer and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                            local targetHum = target.Character:FindFirstChildOfClass("Humanoid")
-                            if targetHum and targetHum.Health > 0 then
-                                local dist = (char.HumanoidRootPart.Position - target.Character.HumanoidRootPart.Position).Magnitude
-                                if dist <= Flags.KillAuraRange then
-                                    knife:Activate()
-                                    firetouchinterest(target.Character.HumanoidRootPart, handle, 0)
-                                    firetouchinterest(target.Character.HumanoidRootPart, handle, 1)
+
+                local murdererChar = GetMurderer()
+                if murdererChar and murdererChar:FindFirstChild("HumanoidRootPart") then
+                    local mHrp = murdererChar.HumanoidRootPart
+                    local dist = (hrp.Position - mHrp.Position).Magnitude
+                    
+                    if dist > Flags.KillAuraRange then
+                        hrp.CFrame = mHrp.CFrame * CFrame.new(0, 0, 2)
+                    end
+                end
+
+                if tick() - lastKillAura >= 0.04 then
+                    lastKillAura = tick()
+                    local handle = knife:FindFirstChild("Handle")
+                    if handle then
+                        for _, target in pairs(Players:GetPlayers()) do
+                            if target ~= LocalPlayer and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHum = target.Character:FindFirstChildOfClass("Humanoid")
+                                if targetHum and targetHum.Health > 0 then
+                                    local dist = (hrp.Position - target.Character.HumanoidRootPart.Position).Magnitude
+                                    if dist <= Flags.KillAuraRange then
+                                        knife:Activate()
+                                        firetouchinterest(target.Character.HumanoidRootPart, handle, 0)
+                                        firetouchinterest(target.Character.HumanoidRootPart, handle, 1)
+                                    end
                                 end
                             end
                         end
@@ -477,7 +553,7 @@ local function LaunchGAG22Hub()
         end)
     end)
 
-    -- Цикл автофарма
+    -- Поиск контейнера монет
     local function GetCoinContainer()
         local container = Workspace:FindFirstChild("CoinContainer")
         if container then return container end
@@ -488,91 +564,80 @@ local function LaunchGAG22Hub()
         return nil
     end
 
+    -- Молниеносный автофарм: моментальный перелет к следующей ближайшей монете без пауз и раздумий
     task.spawn(function()
-        local lastPositionCheck = tick()
-        local stuckPositionCount = 0
-        local lastPosVector = Vector3.new(0, 0, 0)
-
         while Running do
-            if Flags.AutoFarm then
+            if Flags.AutoFarm and IsAlive() then
                 pcall(function()
                     local char = LocalPlayer.Character
-                    if not char or not char:FindFirstChild("HumanoidRootPart") then task.wait(1) return end
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    if not hum or hum.Health <= 0 then task.wait(2) return end
-                    local hrp = char.HumanoidRootPart
-
-                    if tick() - lastPositionCheck > 3 then
-                        if (hrp.Position - lastPosVector).Magnitude < 2 and Flags.AutoFarm then
-                            stuckPositionCount = stuckPositionCount + 1
-                            if stuckPositionCount >= 3 then
-                                hrp.CFrame = hrp.CFrame + Vector3.new(0, 15, 0)
-                                stuckPositionCount = 0
-                            end
-                        else stuckPositionCount = 0 end
-                        lastPosVector = hrp.Position
-                        lastPositionCheck = tick()
-                    end
-
-                    if hrp.Position.Y < -50 then
-                        hrp.CFrame = CFrame.new(0, 50, 0)
-                        task.wait(1)
-                    end
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then task.wait(0.01) return end
 
                     local container = GetCoinContainer()
                     if container then
                         local validCoins = {}
                         for _, child in pairs(container:GetChildren()) do
                             if child and child.Parent then
-                                if child:IsA("BasePart") then table.insert(validCoins, child)
-                                else local part = child:FindFirstChildOfClass("BasePart") if part then table.insert(validCoins, part) end end
+                                local part = child:IsA("BasePart") and child or child:FindFirstChildOfClass("BasePart")
+                                if part and part.Parent then table.insert(validCoins, part) end
                             end
                         end
 
-                        if #validCoins > 0 then
+                        if #validCoins > 0 and IsAlive() and Flags.AutoFarm then
                             local closestCoin, minDistance = nil, math.huge
                             for _, coin in ipairs(validCoins) do
                                 if coin and coin.Parent then
                                     local dist = (hrp.Position - coin.Position).Magnitude
-                                    if dist < minDistance then minDistance = dist closestCoin = coin end
+                                    if dist < minDistance then
+                                        minDistance = dist
+                                        closestCoin = coin
+                                    end
                                 end
                             end
 
-                            if closestCoin and closestCoin.Parent then
-                                local speed = Flags.FarmSpeed or 60
-                                local tweenTime = math.clamp(minDistance / speed, 0.05, 3.5)
-                                for _, part in pairs(char:GetChildren()) do if part:IsA("BasePart") then part.CanCollide = false end end
+                            if closestCoin and closestCoin.Parent and IsAlive() and Flags.AutoFarm then
+                                local speed = Flags.FarmSpeed or 220
+                                local tweenTime = math.clamp(minDistance / speed, 0.01, 0.35)
+
+                                for _, part in pairs(char:GetChildren()) do
+                                    if part:IsA("BasePart") then part.CanCollide = false end
+                                end
 
                                 CurrentTween = TweenService:Create(hrp, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = closestCoin.CFrame})
                                 CurrentTween:Play()
 
-                                local startFly = tick()
-                                local collected = false
-                                while (tick() - startFly) < (tweenTime + 0.2) and Flags.AutoFarm and Running do
+                                while CurrentTween and CurrentTween.PlaybackState == Enum.PlaybackState.Playing and Flags.AutoFarm and IsAlive() do
                                     RunService.Stepped:Wait()
                                     hrp.Velocity = Vector3.new(0, 0, 0)
-                                    if closestCoin and closestCoin.Parent then
-                                        if (hrp.Position - closestCoin.Position).Magnitude <= 5 then
-                                            firetouchinterest(hrp, closestCoin, 0)
-                                            firetouchinterest(hrp, closestCoin, 1)
-                                            collected = true
-                                            break
-                                        end
-                                    else break end
+                                    
+                                    if not closestCoin or not closestCoin.Parent then
+                                        break
+                                    end
+
+                                    if (hrp.Position - closestCoin.Position).Magnitude <= 7 then
+                                        firetouchinterest(hrp, closestCoin, 0)
+                                        firetouchinterest(hrp, closestCoin, 1)
+                                        break
+                                    end
                                 end
 
-                                if CurrentTween then pcall(function() CurrentTween:Cancel() end) end
-                                if not collected and closestCoin and closestCoin.Parent then
-                                    hrp.CFrame = closestCoin.CFrame
-                                    firetouchinterest(hrp, closestCoin, 0)
-                                    firetouchinterest(hrp, closestCoin, 1)
-                                    task.wait(0.05)
+                                if CurrentTween then
+                                    pcall(function() CurrentTween:Cancel() end)
+                                    CurrentTween = nil
                                 end
-                            else task.wait(0.2) end
-                        else task.wait(0.5) end
-                    else task.wait(1) end
+                            else
+                                RunService.RenderStepped:Wait()
+                            end
+                        else
+                            task.wait(0.01)
+                        end
+                    else
+                        task.wait(0.05)
+                    end
                 end)
-            else task.wait(0.5) end
+            else
+                task.wait(0.05)
+            end
             RunService.Stepped:Wait()
         end
     end)
@@ -612,7 +677,7 @@ local function LaunchGAG22Hub()
     end)
 
     Connections.Physics = RunService.Stepped:Connect(function()
-        if not Running then return end
+        if not Running or not IsAlive() then return end
         pcall(function()
             local char = LocalPlayer.Character
             if char then
@@ -630,7 +695,7 @@ local function LaunchGAG22Hub()
 
     Connections.InfJump = UserInputService.JumpRequest:Connect(function()
         pcall(function()
-            if Running and Flags.InfJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            if Running and Flags.InfJump and IsAlive() then
                 LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
             end
         end)
@@ -654,7 +719,6 @@ BaseFrame.Position = UDim2.new(0.5, -480, 0.5, -210)
 BaseFrame.BackgroundTransparency = 1
 BaseFrame.Parent = LoaderGui
 
--- Перетаскивание
 local Dragging, DragStart, StartPos
 BaseFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -673,9 +737,6 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- -------------------------------------------------------
--- ЛЕВАЯ ПАНЕЛЬ (COMPATIBILITY ANALYZER)
--- -------------------------------------------------------
 local LeftPanel = Instance.new("Frame")
 LeftPanel.Size = UDim2.new(0, 300, 1, 0)
 LeftPanel.Position = UDim2.new(0, 0, 0, 0)
@@ -709,7 +770,6 @@ LeftSubTitle.TextXAlignment = Enum.TextXAlignment.Left
 LeftSubTitle.BackgroundTransparency = 1
 LeftSubTitle.Parent = LeftPanel
 
--- Блок Xeno Compatible
 local XenoBox = Instance.new("Frame")
 XenoBox.Size = UDim2.new(1, -30, 0, 44)
 XenoBox.Position = UDim2.new(0, 15, 0, 70)
@@ -748,7 +808,6 @@ CapSubtitle.TextXAlignment = Enum.TextXAlignment.Left
 CapSubtitle.BackgroundTransparency = 1
 CapSubtitle.Parent = LeftPanel
 
--- Список проверок
 local items = {
     {name = "Connection", status = "service link ready"},
     {name = "Protected core", status = "protected runtime ready"},
@@ -811,9 +870,6 @@ FooterText.TextXAlignment = Enum.TextXAlignment.Left
 FooterText.BackgroundTransparency = 1
 FooterText.Parent = LeftPanel
 
--- -------------------------------------------------------
--- ПРАВАЯ ПАНЕЛЬ (MAIN CONTENT AREA)
--- -------------------------------------------------------
 local RightPanel = Instance.new("Frame")
 RightPanel.Size = UDim2.new(0, 645, 1, 0)
 RightPanel.Position = UDim2.new(0, 315, 0, 0)
@@ -825,7 +881,6 @@ local RightCorner = Instance.new("UICorner")
 RightCorner.CornerRadius = UDim.new(0, 12)
 RightCorner.Parent = RightPanel
 
--- Шапка (Logo GAG22 + LOADER 8.0.7)
 local LogoIcon = Instance.new("Frame")
 LogoIcon.Size = UDim2.new(0, 42, 0, 42)
 LogoIcon.Position = UDim2.new(0, 25, 0, 20)
@@ -849,7 +904,7 @@ LogoText.Parent = LogoIcon
 local LoaderTitle = Instance.new("TextLabel")
 LoaderTitle.Size = UDim2.new(0, 200, 0, 42)
 LoaderTitle.Position = UDim2.new(0, 78, 0, 20)
-LoaderTitle.Text = "LOADER  8.0.7"
+LoaderTitle.Text = "LOADER  8.0.10"
 LoaderTitle.TextColor3 = Color3.fromRGB(220, 225, 235)
 LoaderTitle.Font = Enum.Font.GothamBold
 LoaderTitle.TextSize = 13
@@ -877,7 +932,6 @@ BadgeText.TextSize = 11
 BadgeText.BackgroundTransparency = 1
 BadgeText.Parent = StatusBadge
 
--- Блок ПРОФИЛЬ
 local ProfileCard = Instance.new("Frame")
 ProfileCard.Size = UDim2.new(1, -50, 0, 95)
 ProfileCard.Position = UDim2.new(0, 25, 0, 80)
@@ -923,7 +977,6 @@ ProfileStatus.TextXAlignment = Enum.TextXAlignment.Left
 ProfileStatus.BackgroundTransparency = 1
 ProfileStatus.Parent = ProfileCard
 
--- Подзаголовок запуска
 local LaunchHeader = Instance.new("TextLabel")
 LaunchHeader.Size = UDim2.new(1, -50, 0, 15)
 LaunchHeader.Position = UDim2.new(0, 25, 0, 195)
@@ -935,7 +988,6 @@ LaunchHeader.TextXAlignment = Enum.TextXAlignment.Left
 LaunchHeader.BackgroundTransparency = 1
 LaunchHeader.Parent = RightPanel
 
--- Единая карточка запуска
 local LaunchCard = Instance.new("TextButton")
 LaunchCard.Size = UDim2.new(1, -50, 0, 90)
 LaunchCard.Position = UDim2.new(0, 25, 0, 220)
@@ -986,7 +1038,6 @@ LaunchCard.MouseButton1Click:Connect(function()
     LaunchGAG22Hub()
 end)
 
--- Нижние кнопки (Инструкция / Устройство / Закрыть)
 local BtnInst = Instance.new("TextButton")
 BtnInst.Size = UDim2.new(0, 130, 0, 42)
 BtnInst.Position = UDim2.new(0, 25, 0, 335)
@@ -1001,6 +1052,66 @@ BtnInst.Parent = RightPanel
 local InstCorner = Instance.new("UICorner")
 InstCorner.CornerRadius = UDim.new(0, 8)
 InstCorner.Parent = BtnInst
+
+-- Окно Инструкции
+local InstructionFrame = Instance.new("Frame")
+InstructionFrame.Size = UDim2.new(1, -50, 1, -110)
+InstructionFrame.Position = UDim2.new(0, 25, 0, 80)
+InstructionFrame.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
+InstructionFrame.BorderSizePixel = 0
+InstructionFrame.Visible = false
+InstructionFrame.Parent = RightPanel
+
+local InstCornerFrame = Instance.new("UICorner")
+InstCornerFrame.CornerRadius = UDim.new(0, 10)
+InstCornerFrame.Parent = InstructionFrame
+
+local InstHeader = Instance.new("TextLabel")
+InstHeader.Size = UDim2.new(1, -40, 0, 30)
+InstHeader.Position = UDim2.new(0, 20, 0, 15)
+InstHeader.Text = "ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ"
+InstHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+InstHeader.Font = Enum.Font.GothamBold
+InstHeader.TextSize = 14
+InstHeader.TextXAlignment = Enum.TextXAlignment.Left
+InstHeader.BackgroundTransparency = 1
+InstHeader.Parent = InstructionFrame
+
+local InstContent = Instance.new("TextLabel")
+InstContent.Size = UDim2.new(1, -40, 1, -110)
+InstContent.Position = UDim2.new(0, 20, 0, 50)
+InstContent.Text = "1. Запустите скрипт через инжектор (например, Xeno).\n2. Нажмите кнопку «Запустить GAG22 Hub» в главном меню.\n3. Перейдите на вкладку Farm в открывшемся интерфейсе MM2 и активируйте Smart Auto Farm (монеты собираются плавно, быстро и без пауз).\n4. На вкладке Combat включите Murderer Aura и автотелепорт к убийце для моментального устранения.\n5. Используйте Role ESP во вкладке Visuals для подсветки ролей игроков."
+InstContent.TextColor3 = Color3.fromRGB(180, 190, 205)
+InstContent.Font = Enum.Font.Gotham
+InstContent.TextSize = 12
+InstContent.TextWrapped = true
+InstContent.TextXAlignment = Enum.TextXAlignment.Left
+InstContent.TextYAlignment = Enum.TextYAlignment.Top
+InstContent.BackgroundTransparency = 1
+InstContent.Parent = InstructionFrame
+
+local CloseInstBtn = Instance.new("TextButton")
+CloseInstBtn.Size = UDim2.new(1, -40, 0, 38)
+CloseInstBtn.Position = UDim2.new(0, 20, 1, -48)
+CloseInstBtn.BackgroundColor3 = Color3.fromRGB(28, 36, 50)
+CloseInstBtn.BorderSizePixel = 0
+CloseInstBtn.Text = "Закрыть инструкцию"
+CloseInstBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseInstBtn.Font = Enum.Font.GothamBold
+CloseInstBtn.TextSize = 12
+CloseInstBtn.Parent = InstructionFrame
+
+local CloseInstCorner = Instance.new("UICorner")
+CloseInstCorner.CornerRadius = UDim.new(0, 8)
+CloseInstCorner.Parent = CloseInstBtn
+
+CloseInstBtn.MouseButton1Click:Connect(function()
+    InstructionFrame.Visible = false
+end)
+
+BtnInst.MouseButton1Click:Connect(function()
+    InstructionFrame.Visible = true
+end)
 
 local BtnDev = Instance.new("TextButton")
 BtnDev.Size = UDim2.new(0, 130, 0, 42)
@@ -1029,4 +1140,4 @@ CloseArrow.Parent = RightPanel
 
 CloseArrow.MouseButton1Click:Connect(function()
     LoaderGui:Destroy()
-end)
+end)       
