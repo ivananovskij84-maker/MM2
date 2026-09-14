@@ -1,5 +1,5 @@
 -- =======================================================
--- MM2 CONTROL CENTER (CRASH-FIXED & STABLE AUTO-FARM)
+-- GAG22 | MM2 HUB (CRASH-FIXED & STABLE AUTO-FARM)
 -- =======================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -11,8 +11,8 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 -- Защита от повторного запуска
-if CoreGui:FindFirstChild("MM2ControlCenter") then
-    CoreGui.MM2ControlCenter:Destroy()
+if CoreGui:FindFirstChild("GAG22") then
+    CoreGui.GAG22:Destroy()
 end
 
 -- Переменные состояния
@@ -55,8 +55,8 @@ local function UnloadScript()
         end
     end
 
-    if CoreGui:FindFirstChild("MM2ControlCenter") then
-        CoreGui.MM2ControlCenter:Destroy()
+    if CoreGui:FindFirstChild("GAG22") then
+        CoreGui.GAG22:Destroy()
     end
 end
 
@@ -65,7 +65,7 @@ end
 -- =======================================================
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MM2ControlCenter"
+ScreenGui.Name = "GAG22"
 ScreenGui.ResetOnSpawn = false
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
@@ -115,10 +115,10 @@ end)
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0, 150, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
-Title.Text = "CONTROL CENTER"
+Title.Text = "GAG22"
 Title.TextColor3 = Color3.fromRGB(240, 240, 240)
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 13
+Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.BackgroundTransparency = 1
 Title.Parent = TopBar
@@ -174,7 +174,7 @@ BottomBar.Parent = MainFrame
 local StatusText = Instance.new("TextLabel")
 StatusText.Size = UDim2.new(1, -20, 1, 0)
 StatusText.Position = UDim2.new(0, 10, 0, 0)
-StatusText.Text = "READY | PLACE " .. tostring(game.PlaceId) .. " · MM2 VIP Hub v3.7 (Anti-AFK & SafeFarm)"
+StatusText.Text = "READY | PLACE " .. tostring(game.PlaceId) .. " · GAG22 Hub v3.7 (Anti-AFK & SafeFarm)"
 StatusText.TextColor3 = Color3.fromRGB(120, 130, 145)
 StatusText.Font = Enum.Font.Gotham
 StatusText.TextSize = 11
