@@ -8,13 +8,16 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
--- Удаление копий
-if CoreGui:FindFirstChild("GAG22_Loader") then
-    CoreGui.GAG22_Loader:Destroy()
-end
+-- Функция копирования ссылки в буфер обмена
+local setclip = setclipboard or toclipboard or set_clipboard or (syn and syn.write_clipboard) or function() end
+
+-- Удаление старых копий GUI
+if CoreGui:FindFirstChild("GAG22_Loader") then CoreGui.GAG22_Loader:Destroy() end
+if CoreGui:FindFirstChild("GAG22_UpdateCheck") then CoreGui.GAG22_UpdateCheck:Destroy() end
+if CoreGui:FindFirstChild("GAG22_Subscribe") then CoreGui.GAG22_Subscribe:Destroy() end
 
 -- =======================================================
--- ВСТРОЕННЫЙ ОСНОВНОЙ СКРИПТ (GAG22 MM2 HUB)
+-- 1. ВСТРОЕННЫЙ ОСНОВНОЙ СКРИПТ (GAG22 MM2 HUB)
 -- =======================================================
 local function LaunchGAG22Hub()
     local RunService = game:GetService("RunService")
@@ -304,10 +307,7 @@ local function LaunchGAG22Hub()
             callback(state)
         end
 
-        SwitchBg.MouseButton1Click:Connect(function()
-            SetState(not state)
-        end)
-
+        SwitchBg.MouseButton1Click:Connect(function() SetState(not state) end)
         return SetState
     end
 
@@ -386,7 +386,7 @@ local function LaunchGAG22Hub()
         Btn.MouseButton1Click:Connect(callback)
     end
 
-    -- Настройка вкладок и карточек
+    -- Вкладки
     local CombatPage  = CreateTab("Combat")
     local PlayerPage  = CreateTab("Player")
     local FarmPage    = CreateTab("Farm")
@@ -413,7 +413,6 @@ local function LaunchGAG22Hub()
     AddToggle(PhysCard, "Noclip", false, function(v) Flags.Noclip = v end)
     AddToggle(PhysCard, "Infinite Jump", false, function(v) Flags.InfJump = v end)
 
-    -- Карточка Автофарма
     local FarmCard = CreateCard(FarmPage, "Smart Auto Farm")
     local SetFarmToggle = AddToggle(FarmCard, "Auto Collect Coins", false, function(v) 
         Flags.AutoFarm = v 
@@ -440,7 +439,6 @@ local function LaunchGAG22Hub()
         game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
     end)
 
-    -- Вспомогательная функция проверки жизни персонажа
     local function IsAlive(player)
         player = player or LocalPlayer
         local char = player.Character
@@ -450,22 +448,13 @@ local function LaunchGAG22Hub()
         return hum and hum.Health > 0 and hrp ~= nil
     end
 
-    -- Отслеживание смерти персонажа
     local function SetupCharacterEvents(char)
         if not char then return end
         local hum = char:WaitForChild("Humanoid", 5)
         if hum then
             hum.Died:Connect(function()
-                if CurrentTween then
-                    pcall(function() CurrentTween:Cancel() end)
-                    CurrentTween = nil
-                end
-                
-                if not Flags.AutoResume then
-                    SetFarmToggle(false)
-                else
-                    Flags.AutoFarm = false
-                end
+                if CurrentTween then pcall(function() CurrentTween:Cancel() end) CurrentTween = nil end
+                if not Flags.AutoResume then SetFarmToggle(false) else Flags.AutoFarm = false end
             end)
         end
     end
@@ -473,13 +462,9 @@ local function LaunchGAG22Hub()
     if LocalPlayer.Character then SetupCharacterEvents(LocalPlayer.Character) end
     table.insert(Connections, LocalPlayer.CharacterAdded:Connect(function(char)
         SetupCharacterEvents(char)
-        if Flags.AutoResume then
-            Flags.AutoFarm = true
-            SetFarmToggle(true)
-        end
+        if Flags.AutoResume then Flags.AutoFarm = true SetFarmToggle(true) end
     end))
 
-    -- Вспомогательные функции ролей
     local function GetPlayerRole(player)
         if not player or not player.Character then return "Innocent" end
         local char = player.Character
@@ -489,47 +474,33 @@ local function LaunchGAG22Hub()
         return "Innocent"
     end
 
-    -- Поиск убийцы для мгновенного телепорта и атаки
     local function GetMurderer()
         for _, player in pairs(Players:GetPlayers()) do
             if player ~= LocalPlayer and IsAlive(player) then
-                if GetPlayerRole(player) == "Murderer" then
-                    return player.Character
-                end
+                if GetPlayerRole(player) == "Murderer" then return player.Character end
             end
         end
         return nil
     end
 
-    -- Логика KillAura & SheriffAura
     local lastKillAura = 0
     Connections.KillAura = RunService.RenderStepped:Connect(function()
         if not Running or not Flags.KillAura or not IsAlive() then return end
-        
         pcall(function()
             local char = LocalPlayer.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
-
             local backpack = LocalPlayer:FindFirstChild("Backpack")
             local knife = char:FindFirstChild("Knife") or (backpack and backpack:FindFirstChild("Knife"))
-            
             if knife then
-                if knife.Parent == backpack then
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum then hum:EquipTool(knife) end
-                end
-
+                if knife.Parent == backpack then local hum = char:FindFirstChildOfClass("Humanoid") if hum then hum:EquipTool(knife) end end
                 local murdererChar = GetMurderer()
                 if murdererChar and murdererChar:FindFirstChild("HumanoidRootPart") then
                     local mHrp = murdererChar.HumanoidRootPart
-                    local dist = (hrp.Position - mHrp.Position).Magnitude
-                    
-                    if dist > Flags.KillAuraRange then
+                    if (hrp.Position - mHrp.Position).Magnitude > Flags.KillAuraRange then
                         hrp.CFrame = mHrp.CFrame * CFrame.new(0, 0, 2)
                     end
                 end
-
                 if tick() - lastKillAura >= 0.04 then
                     lastKillAura = tick()
                     local handle = knife:FindFirstChild("Handle")
@@ -538,8 +509,7 @@ local function LaunchGAG22Hub()
                             if target ~= LocalPlayer and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                                 local targetHum = target.Character:FindFirstChildOfClass("Humanoid")
                                 if targetHum and targetHum.Health > 0 then
-                                    local dist = (hrp.Position - target.Character.HumanoidRootPart.Position).Magnitude
-                                    if dist <= Flags.KillAuraRange then
+                                    if (hrp.Position - target.Character.HumanoidRootPart.Position).Magnitude <= Flags.KillAuraRange then
                                         knife:Activate()
                                         firetouchinterest(target.Character.HumanoidRootPart, handle, 0)
                                         firetouchinterest(target.Character.HumanoidRootPart, handle, 1)
@@ -553,7 +523,6 @@ local function LaunchGAG22Hub()
         end)
     end)
 
-    -- Поиск контейнера монет
     local function GetCoinContainer()
         local container = Workspace:FindFirstChild("CoinContainer")
         if container then return container end
@@ -564,7 +533,6 @@ local function LaunchGAG22Hub()
         return nil
     end
 
-    -- Молниеносный автофарм: моментальный перелет к следующей ближайшей монете без пауз и раздумий
     task.spawn(function()
         while Running do
             if Flags.AutoFarm and IsAlive() then
@@ -572,7 +540,6 @@ local function LaunchGAG22Hub()
                     local char = LocalPlayer.Character
                     local hrp = char and char:FindFirstChild("HumanoidRootPart")
                     if not hrp then task.wait(0.01) return end
-
                     local container = GetCoinContainer()
                     if container then
                         local validCoins = {}
@@ -582,67 +549,40 @@ local function LaunchGAG22Hub()
                                 if part and part.Parent then table.insert(validCoins, part) end
                             end
                         end
-
                         if #validCoins > 0 and IsAlive() and Flags.AutoFarm then
                             local closestCoin, minDistance = nil, math.huge
                             for _, coin in ipairs(validCoins) do
                                 if coin and coin.Parent then
                                     local dist = (hrp.Position - coin.Position).Magnitude
-                                    if dist < minDistance then
-                                        minDistance = dist
-                                        closestCoin = coin
-                                    end
+                                    if dist < minDistance then minDistance = dist closestCoin = coin end
                                 end
                             end
-
                             if closestCoin and closestCoin.Parent and IsAlive() and Flags.AutoFarm then
                                 local speed = Flags.FarmSpeed or 220
                                 local tweenTime = math.clamp(minDistance / speed, 0.01, 0.35)
-
-                                for _, part in pairs(char:GetChildren()) do
-                                    if part:IsA("BasePart") then part.CanCollide = false end
-                                end
-
+                                for _, part in pairs(char:GetChildren()) do if part:IsA("BasePart") then part.CanCollide = false end end
                                 CurrentTween = TweenService:Create(hrp, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = closestCoin.CFrame})
                                 CurrentTween:Play()
-
                                 while CurrentTween and CurrentTween.PlaybackState == Enum.PlaybackState.Playing and Flags.AutoFarm and IsAlive() do
                                     RunService.Stepped:Wait()
                                     hrp.Velocity = Vector3.new(0, 0, 0)
-                                    
-                                    if not closestCoin or not closestCoin.Parent then
-                                        break
-                                    end
-
+                                    if not closestCoin or not closestCoin.Parent then break end
                                     if (hrp.Position - closestCoin.Position).Magnitude <= 7 then
                                         firetouchinterest(hrp, closestCoin, 0)
                                         firetouchinterest(hrp, closestCoin, 1)
                                         break
                                     end
                                 end
-
-                                if CurrentTween then
-                                    pcall(function() CurrentTween:Cancel() end)
-                                    CurrentTween = nil
-                                end
-                            else
-                                RunService.RenderStepped:Wait()
-                            end
-                        else
-                            task.wait(0.01)
-                        end
-                    else
-                        task.wait(0.05)
-                    end
+                                if CurrentTween then pcall(function() CurrentTween:Cancel() end) CurrentTween = nil end
+                            else RunService.RenderStepped:Wait() end
+                        else task.wait(0.01) end
+                    else task.wait(0.05) end
                 end)
-            else
-                task.wait(0.05)
-            end
+            else task.wait(0.05) end
             RunService.Stepped:Wait()
         end
     end)
 
-    -- Anti-AFK
     local VirtualUser = game:GetService("VirtualUser")
     LocalPlayer.Idled:Connect(function()
         pcall(function()
@@ -652,7 +592,6 @@ local function LaunchGAG22Hub()
         end)
     end)
 
-    -- ESP & Physics
     Connections.ESP = RunService.RenderStepped:Connect(function()
         if not Running then return end
         pcall(function()
@@ -661,11 +600,7 @@ local function LaunchGAG22Hub()
                     local char = player.Character
                     local highlight = char:FindFirstChild("RoleHighlight")
                     if Flags.ESP then
-                        if not highlight then
-                            highlight = Instance.new("Highlight")
-                            highlight.Name = "RoleHighlight"
-                            highlight.Parent = char
-                        end
+                        if not highlight then highlight = Instance.new("Highlight") highlight.Name = "RoleHighlight" highlight.Parent = char end
                         local role = GetPlayerRole(player)
                         highlight.FillColor = role == "Murderer" and Color3.fromRGB(255, 40, 40) or (role == "Sheriff" and Color3.fromRGB(40, 120, 255) or Color3.fromRGB(40, 255, 120))
                         highlight.FillTransparency = 0.4
@@ -686,9 +621,7 @@ local function LaunchGAG22Hub()
                     if Flags.WalkSpeedEnabled then hum.WalkSpeed = Flags.WalkSpeedValue end
                     if Flags.JumpPowerEnabled then hum.JumpPower = Flags.JumpPowerValue end
                 end
-                if Flags.Noclip then
-                    for _, part in pairs(char:GetChildren()) do if part:IsA("BasePart") then part.CanCollide = false end end
-                end
+                if Flags.Noclip then for _, part in pairs(char:GetChildren()) do if part:IsA("BasePart") then part.CanCollide = false end end end
             end
         end)
     end)
@@ -703,441 +636,444 @@ local function LaunchGAG22Hub()
 end
 
 -- =======================================================
--- СОЗДАНИЕ ИНТЕРФЕЙСА ЛОАДЕРА (LOADER GUI BUILDER)
+-- 2. ОКТНО ПОДПИСКИ ТЕЛЕГРАМ (SUBSCRIBE MODAL)
 -- =======================================================
+local function ShowSubscribeModal(onFinished)
+    local SubGui = Instance.new("ScreenGui")
+    SubGui.Name = "GAG22_Subscribe"
+    SubGui.ResetOnSpawn = false
+    pcall(function() SubGui.Parent = CoreGui end)
+    if not SubGui.Parent then SubGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
-local LoaderGui = Instance.new("ScreenGui")
-LoaderGui.Name = "GAG22_Loader"
-LoaderGui.ResetOnSpawn = false
-pcall(function() LoaderGui.Parent = CoreGui end)
-if not LoaderGui.Parent then LoaderGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+    local Modal = Instance.new("Frame")
+    Modal.Size = UDim2.new(0, 440, 0, 250)
+    Modal.Position = UDim2.new(0.5, -220, 0.5, -125)
+    Modal.BackgroundColor3 = Color3.fromRGB(11, 14, 20)
+    Modal.BorderSizePixel = 0
+    Modal.Parent = SubGui
 
-local BaseFrame = Instance.new("Frame")
-BaseFrame.Name = "BaseFrame"
-BaseFrame.Size = UDim2.new(0, 960, 0, 420)
-BaseFrame.Position = UDim2.new(0.5, -480, 0.5, -210)
-BaseFrame.BackgroundTransparency = 1
-BaseFrame.Parent = LoaderGui
+    local ModalCorner = Instance.new("UICorner")
+    ModalCorner.CornerRadius = UDim.new(0, 12)
+    ModalCorner.Parent = Modal
 
-local Dragging, DragStart, StartPos
-BaseFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        Dragging = true
-        DragStart = input.Position
-        StartPos = BaseFrame.Position
-    end
-end)
-BaseFrame.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then Dragging = false end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement and Dragging then
-        local delta = input.Position - DragStart
-        BaseFrame.Position = UDim2.new(StartPos.X.Scale, StartPos.X.Offset + delta.X, StartPos.Y.Scale, StartPos.Y.Offset + delta.Y)
-    end
-end)
+    local ModalStroke = Instance.new("UIStroke")
+    ModalStroke.Color = Color3.fromRGB(0, 190, 240)
+    ModalStroke.Thickness = 1.5
+    ModalStroke.Parent = Modal
 
-local LeftPanel = Instance.new("Frame")
-LeftPanel.Size = UDim2.new(0, 300, 1, 0)
-LeftPanel.Position = UDim2.new(0, 0, 0, 0)
-LeftPanel.BackgroundColor3 = Color3.fromRGB(8, 10, 14)
-LeftPanel.BorderSizePixel = 0
-LeftPanel.Parent = BaseFrame
+    local SubTitle = Instance.new("TextLabel")
+    SubTitle.Size = UDim2.new(1, -40, 0, 30)
+    SubTitle.Position = UDim2.new(0, 20, 0, 20)
+    SubTitle.Text = "📢 ПОДПИШИСЬ НА НАШ КАНАЛ!"
+    SubTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SubTitle.Font = Enum.Font.GothamBold
+    SubTitle.TextSize = 16
+    SubTitle.BackgroundTransparency = 1
+    SubTitle.Parent = Modal
 
-local LeftCorner = Instance.new("UICorner")
-LeftCorner.CornerRadius = UDim.new(0, 12)
-LeftCorner.Parent = LeftPanel
+    local SubText = Instance.new("TextLabel")
+    SubText.Size = UDim2.new(1, -40, 0, 40)
+    SubText.Position = UDim2.new(0, 20, 0, 55)
+    SubText.Text = "Подпишись на наш Telegram, чтобы получать свежие обновления и скрипты:\nt.me/GAG2212"
+    SubText.TextColor3 = Color3.fromRGB(170, 180, 195)
+    SubText.Font = Enum.Font.GothamMedium
+    SubText.TextSize = 12
+    SubText.TextWrapped = true
+    SubText.BackgroundTransparency = 1
+    SubText.Parent = Modal
 
-local LeftTitle = Instance.new("TextLabel")
-LeftTitle.Size = UDim2.new(1, -30, 0, 20)
-LeftTitle.Position = UDim2.new(0, 15, 0, 20)
-LeftTitle.Text = "COMPATIBILITY"
-LeftTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-LeftTitle.Font = Enum.Font.GothamBold
-LeftTitle.TextSize = 14
-LeftTitle.TextXAlignment = Enum.TextXAlignment.Left
-LeftTitle.BackgroundTransparency = 1
-LeftTitle.Parent = LeftPanel
+    local CopyBtn = Instance.new("TextButton")
+    CopyBtn.Size = UDim2.new(1, -40, 0, 42)
+    CopyBtn.Position = UDim2.new(0, 20, 0, 105)
+    CopyBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 220)
+    CopyBtn.BorderSizePixel = 0
+    CopyBtn.Text = "СКОПИРОВАТЬ ССЫЛКУ"
+    CopyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CopyBtn.Font = Enum.Font.GothamBold
+    CopyBtn.TextSize = 13
+    CopyBtn.Parent = Modal
 
-local LeftSubTitle = Instance.new("TextLabel")
-LeftSubTitle.Size = UDim2.new(1, -30, 0, 15)
-LeftSubTitle.Position = UDim2.new(0, 15, 0, 42)
-LeftSubTitle.Text = "SAFE CAPABILITY ANALYZER"
-LeftSubTitle.TextColor3 = Color3.fromRGB(100, 110, 125)
-LeftSubTitle.Font = Enum.Font.GothamBold
-LeftSubTitle.TextSize = 10
-LeftSubTitle.TextXAlignment = Enum.TextXAlignment.Left
-LeftSubTitle.BackgroundTransparency = 1
-LeftSubTitle.Parent = LeftPanel
+    local CopyCorner = Instance.new("UICorner")
+    CopyCorner.CornerRadius = UDim.new(0, 8)
+    CopyCorner.Parent = CopyBtn
 
-local XenoBox = Instance.new("Frame")
-XenoBox.Size = UDim2.new(1, -30, 0, 44)
-XenoBox.Position = UDim2.new(0, 15, 0, 70)
-XenoBox.BackgroundColor3 = Color3.fromRGB(12, 28, 24)
-XenoBox.BorderSizePixel = 0
-XenoBox.Parent = LeftPanel
+    CopyBtn.MouseButton1Click:Connect(function()
+        pcall(function() setclip("https://t.me/GAG2212") end)
+        CopyBtn.Text = "СКОПИРОВАНО В БУФЕР!"
+        CopyBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 130)
+        task.wait(1.5)
+        CopyBtn.Text = "СКОПИРОВАТЬ ССЫЛКУ"
+        CopyBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 220)
+    end)
 
-local XenoCorner = Instance.new("UICorner")
-XenoCorner.CornerRadius = UDim.new(0, 8)
-XenoCorner.Parent = XenoBox
+    local TimerLabel = Instance.new("TextLabel")
+    TimerLabel.Size = UDim2.new(1, -40, 0, 30)
+    TimerLabel.Position = UDim2.new(0, 20, 0, 185)
+    TimerLabel.Text = "Запуск скрипта через: 10 сек..."
+    TimerLabel.TextColor3 = Color3.fromRGB(0, 210, 255)
+    TimerLabel.Font = Enum.Font.GothamBold
+    TimerLabel.TextSize = 13
+    TimerLabel.BackgroundTransparency = 1
+    TimerLabel.Parent = Modal
 
-local XenoStroke = Instance.new("UIStroke")
-XenoStroke.Color = Color3.fromRGB(0, 180, 130)
-XenoStroke.Thickness = 1
-XenoStroke.Parent = XenoBox
-
-local XenoText = Instance.new("TextLabel")
-XenoText.Size = UDim2.new(1, -20, 1, 0)
-XenoText.Position = UDim2.new(0, 12, 0, 0)
-XenoText.Text = "🟢  Xeno | LOADER COMPATIBLE"
-XenoText.TextColor3 = Color3.fromRGB(0, 230, 160)
-XenoText.Font = Enum.Font.GothamBold
-XenoText.TextSize = 12
-XenoText.TextXAlignment = Enum.TextXAlignment.Left
-XenoText.BackgroundTransparency = 1
-XenoText.Parent = XenoBox
-
-local CapSubtitle = Instance.new("TextLabel")
-CapSubtitle.Size = UDim2.new(1, -30, 0, 15)
-CapSubtitle.Position = UDim2.new(0, 15, 0, 128)
-CapSubtitle.Text = "Capability flags only | no script or memory scan"
-CapSubtitle.TextColor3 = Color3.fromRGB(90, 100, 115)
-CapSubtitle.Font = Enum.Font.Gotham
-CapSubtitle.TextSize = 10
-CapSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-CapSubtitle.BackgroundTransparency = 1
-CapSubtitle.Parent = LeftPanel
-
-local items = {
-    {name = "Connection", status = "service link ready"},
-    {name = "Protected core", status = "protected runtime ready"},
-    {name = "Integrity", status = "verification ready"},
-    {name = "Local continuity", status = "secure state ready"}
-}
-
-for i, item in ipairs(items) do
-    local ItemBox = Instance.new("Frame")
-    ItemBox.Size = UDim2.new(1, -30, 0, 38)
-    ItemBox.Position = UDim2.new(0, 15, 0, 145 + (i - 1) * 44)
-    ItemBox.BackgroundColor3 = Color3.fromRGB(12, 16, 22)
-    ItemBox.BorderSizePixel = 0
-    ItemBox.Parent = LeftPanel
-
-    local ItemCorner = Instance.new("UICorner")
-    ItemCorner.CornerRadius = UDim.new(0, 6)
-    ItemCorner.Parent = ItemBox
-
-    local Dot = Instance.new("TextLabel")
-    Dot.Size = UDim2.new(0, 20, 1, 0)
-    Dot.Position = UDim2.new(0, 10, 0, 0)
-    Dot.Text = "🟢"
-    Dot.TextSize = 8
-    Dot.BackgroundTransparency = 1
-    Dot.Parent = ItemBox
-
-    local NameLbl = Instance.new("TextLabel")
-    NameLbl.Size = UDim2.new(0.5, 0, 1, 0)
-    NameLbl.Position = UDim2.new(0, 28, 0, 0)
-    NameLbl.Text = item.name
-    NameLbl.TextColor3 = Color3.fromRGB(200, 210, 220)
-    NameLbl.Font = Enum.Font.GothamMedium
-    NameLbl.TextSize = 11
-    NameLbl.TextXAlignment = Enum.TextXAlignment.Left
-    NameLbl.BackgroundTransparency = 1
-    NameLbl.Parent = ItemBox
-
-    local StatLbl = Instance.new("TextLabel")
-    StatLbl.Size = UDim2.new(0.5, -10, 1, 0)
-    StatLbl.Position = UDim2.new(0.5, 0, 0, 0)
-    StatLbl.Text = item.status
-    StatLbl.TextColor3 = Color3.fromRGB(0, 180, 130)
-    StatLbl.Font = Enum.Font.Gotham
-    StatLbl.TextSize = 10
-    StatLbl.TextXAlignment = Enum.TextXAlignment.Right
-    StatLbl.BackgroundTransparency = 1
-    StatLbl.Parent = ItemBox
+    task.spawn(function()
+        for i = 10, 1, -1 do
+            TimerLabel.Text = "Запуск скрипта через: " .. tostring(i) .. " сек..."
+            task.wait(1)
+        end
+        SubGui:Destroy()
+        if onFinished then onFinished() end
+    end)
 end
 
-local FooterText = Instance.new("TextLabel")
-FooterText.Size = UDim2.new(1, -30, 0, 30)
-FooterText.Position = UDim2.new(0, 15, 1, -35)
-FooterText.Text = "Loader transport checks passed. Game-module compatibility is verified only after launch."
-FooterText.TextColor3 = Color3.fromRGB(70, 80, 95)
-FooterText.Font = Enum.Font.Gotham
-FooterText.TextSize = 9
-FooterText.TextWrapped = true
-FooterText.TextXAlignment = Enum.TextXAlignment.Left
-FooterText.BackgroundTransparency = 1
-FooterText.Parent = LeftPanel
+-- =======================================================
+-- 3. ОСНОВНОЙ ГУЙ ВЫБОРА ВЕРСИИ (LOADER GUI)
+-- =======================================================
+local function ShowLoaderGui()
+    local LoaderGui = Instance.new("ScreenGui")
+    LoaderGui.Name = "GAG22_Loader"
+    LoaderGui.ResetOnSpawn = false
+    pcall(function() LoaderGui.Parent = CoreGui end)
+    if not LoaderGui.Parent then LoaderGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
-local RightPanel = Instance.new("Frame")
-RightPanel.Size = UDim2.new(0, 645, 1, 0)
-RightPanel.Position = UDim2.new(0, 315, 0, 0)
-RightPanel.BackgroundColor3 = Color3.fromRGB(6, 8, 12)
-RightPanel.BorderSizePixel = 0
-RightPanel.Parent = BaseFrame
+    local BaseFrame = Instance.new("Frame")
+    BaseFrame.Name = "BaseFrame"
+    BaseFrame.Size = UDim2.new(0, 960, 0, 420)
+    BaseFrame.Position = UDim2.new(0.5, -480, 0.5, -210)
+    BaseFrame.BackgroundTransparency = 1
+    BaseFrame.Parent = LoaderGui
 
-local RightCorner = Instance.new("UICorner")
-RightCorner.CornerRadius = UDim.new(0, 12)
-RightCorner.Parent = RightPanel
+    local Dragging, DragStart, StartPos
+    BaseFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            Dragging = true
+            DragStart = input.Position
+            StartPos = BaseFrame.Position
+        end
+    end)
+    BaseFrame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then Dragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and Dragging then
+            local delta = input.Position - DragStart
+            BaseFrame.Position = UDim2.new(StartPos.X.Scale, StartPos.X.Offset + delta.X, StartPos.Y.Scale, StartPos.Y.Offset + delta.Y)
+        end
+    end)
 
-local LogoIcon = Instance.new("Frame")
-LogoIcon.Size = UDim2.new(0, 42, 0, 42)
-LogoIcon.Position = UDim2.new(0, 25, 0, 20)
-LogoIcon.BackgroundColor3 = Color3.fromRGB(15, 23, 34)
-LogoIcon.BorderSizePixel = 0
-LogoIcon.Parent = RightPanel
+    local LeftPanel = Instance.new("Frame")
+    LeftPanel.Size = UDim2.new(0, 300, 1, 0)
+    LeftPanel.BackgroundColor3 = Color3.fromRGB(8, 10, 14)
+    LeftPanel.BorderSizePixel = 0
+    LeftPanel.Parent = BaseFrame
 
-local LogoCorner = Instance.new("UICorner")
-LogoCorner.CornerRadius = UDim.new(0, 8)
-LogoCorner.Parent = LogoIcon
+    local LeftCorner = Instance.new("UICorner")
+    LeftCorner.CornerRadius = UDim.new(0, 12)
+    LeftCorner.Parent = LeftPanel
 
-local LogoText = Instance.new("TextLabel")
-LogoText.Size = UDim2.new(1, 0, 1, 0)
-LogoText.Text = "G"
-LogoText.TextColor3 = Color3.fromRGB(255, 255, 255)
-LogoText.Font = Enum.Font.GothamBold
-LogoText.TextSize = 22
-LogoText.BackgroundTransparency = 1
-LogoText.Parent = LogoIcon
+    local LeftTitle = Instance.new("TextLabel")
+    LeftTitle.Size = UDim2.new(1, -30, 0, 20)
+    LeftTitle.Position = UDim2.new(0, 15, 0, 20)
+    LeftTitle.Text = "COMPATIBILITY"
+    LeftTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    LeftTitle.Font = Enum.Font.GothamBold
+    LeftTitle.TextSize = 14
+    LeftTitle.TextXAlignment = Enum.TextXAlignment.Left
+    LeftTitle.BackgroundTransparency = 1
+    LeftTitle.Parent = LeftPanel
 
-local LoaderTitle = Instance.new("TextLabel")
-LoaderTitle.Size = UDim2.new(0, 200, 0, 42)
-LoaderTitle.Position = UDim2.new(0, 78, 0, 20)
-LoaderTitle.Text = "LOADER  8.0.10"
-LoaderTitle.TextColor3 = Color3.fromRGB(220, 225, 235)
-LoaderTitle.Font = Enum.Font.GothamBold
-LoaderTitle.TextSize = 13
-LoaderTitle.TextXAlignment = Enum.TextXAlignment.Left
-LoaderTitle.BackgroundTransparency = 1
-LoaderTitle.Parent = RightPanel
+    local LeftSubTitle = Instance.new("TextLabel")
+    LeftSubTitle.Size = UDim2.new(1, -30, 0, 15)
+    LeftSubTitle.Position = UDim2.new(0, 15, 0, 42)
+    LeftSubTitle.Text = "SAFE CAPABILITY ANALYZER"
+    LeftSubTitle.TextColor3 = Color3.fromRGB(100, 110, 125)
+    LeftSubTitle.Font = Enum.Font.GothamBold
+    LeftSubTitle.TextSize = 10
+    LeftSubTitle.TextXAlignment = Enum.TextXAlignment.Left
+    LeftSubTitle.BackgroundTransparency = 1
+    LeftSubTitle.Parent = LeftPanel
 
-local StatusBadge = Instance.new("Frame")
-StatusBadge.Size = UDim2.new(0, 110, 0, 38)
-StatusBadge.Position = UDim2.new(1, -135, 0, 22)
-StatusBadge.BackgroundColor3 = Color3.fromRGB(12, 28, 24)
-StatusBadge.BorderSizePixel = 0
-StatusBadge.Parent = RightPanel
+    local XenoBox = Instance.new("Frame")
+    XenoBox.Size = UDim2.new(1, -30, 0, 44)
+    XenoBox.Position = UDim2.new(0, 15, 0, 70)
+    XenoBox.BackgroundColor3 = Color3.fromRGB(12, 28, 24)
+    XenoBox.BorderSizePixel = 0
+    XenoBox.Parent = LeftPanel
 
-local BadgeCorner = Instance.new("UICorner")
-BadgeCorner.CornerRadius = UDim.new(0, 8)
-BadgeCorner.Parent = StatusBadge
+    local XenoCorner = Instance.new("UICorner")
+    XenoCorner.CornerRadius = UDim.new(0, 8)
+    XenoCorner.Parent = XenoBox
 
-local BadgeText = Instance.new("TextLabel")
-BadgeText.Size = UDim2.new(1, 0, 1, 0)
-BadgeText.Text = "🟢  ACTIVE"
-BadgeText.TextColor3 = Color3.fromRGB(0, 210, 150)
-BadgeText.Font = Enum.Font.GothamBold
-BadgeText.TextSize = 11
-BadgeText.BackgroundTransparency = 1
-BadgeText.Parent = StatusBadge
+    local XenoStroke = Instance.new("UIStroke")
+    XenoStroke.Color = Color3.fromRGB(0, 180, 130)
+    XenoStroke.Thickness = 1
+    XenoStroke.Parent = XenoBox
 
-local ProfileCard = Instance.new("Frame")
-ProfileCard.Size = UDim2.new(1, -50, 0, 95)
-ProfileCard.Position = UDim2.new(0, 25, 0, 80)
-ProfileCard.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
-ProfileCard.BorderSizePixel = 0
-ProfileCard.Parent = RightPanel
+    local XenoText = Instance.new("TextLabel")
+    XenoText.Size = UDim2.new(1, -20, 1, 0)
+    XenoText.Position = UDim2.new(0, 12, 0, 0)
+    XenoText.Text = "🟢  Xeno | LOADER COMPATIBLE"
+    XenoText.TextColor3 = Color3.fromRGB(0, 230, 160)
+    XenoText.Font = Enum.Font.GothamBold
+    XenoText.TextSize = 12
+    XenoText.TextXAlignment = Enum.TextXAlignment.Left
+    XenoText.BackgroundTransparency = 1
+    XenoText.Parent = XenoBox
 
-local ProfileCorner = Instance.new("UICorner")
-ProfileCorner.CornerRadius = UDim.new(0, 10)
-ProfileCorner.Parent = ProfileCard
+    local items = {
+        {name = "Connection", status = "service link ready"},
+        {name = "Protected core", status = "protected runtime ready"},
+        {name = "Integrity", status = "verification ready"},
+        {name = "Local continuity", status = "secure state ready"}
+    }
 
-local ProfileHeader = Instance.new("TextLabel")
-ProfileHeader.Size = UDim2.new(1, -30, 0, 15)
-ProfileHeader.Position = UDim2.new(0, 20, 0, 15)
-ProfileHeader.Text = "ПРОФИЛЬ"
-ProfileHeader.TextColor3 = Color3.fromRGB(100, 110, 125)
-ProfileHeader.Font = Enum.Font.GothamBold
-ProfileHeader.TextSize = 10
-ProfileHeader.TextXAlignment = Enum.TextXAlignment.Left
-ProfileHeader.BackgroundTransparency = 1
-ProfileHeader.Parent = ProfileCard
+    for i, item in ipairs(items) do
+        local ItemBox = Instance.new("Frame")
+        ItemBox.Size = UDim2.new(1, -30, 0, 38)
+        ItemBox.Position = UDim2.new(0, 15, 0, 145 + (i - 1) * 44)
+        ItemBox.BackgroundColor3 = Color3.fromRGB(12, 16, 22)
+        ItemBox.BorderSizePixel = 0
+        ItemBox.Parent = LeftPanel
 
-local ProfileName = Instance.new("TextLabel")
-ProfileName.Size = UDim2.new(0.5, 0, 0, 25)
-ProfileName.Position = UDim2.new(0, 20, 0, 42)
-ProfileName.Text = LocalPlayer.Name
-ProfileName.TextColor3 = Color3.fromRGB(255, 255, 255)
-ProfileName.Font = Enum.Font.GothamBold
-ProfileName.TextSize = 18
-ProfileName.TextXAlignment = Enum.TextXAlignment.Left
-ProfileName.BackgroundTransparency = 1
-ProfileName.Parent = ProfileCard
+        local ItemCorner = Instance.new("UICorner")
+        ItemCorner.CornerRadius = UDim.new(0, 6)
+        ItemCorner.Parent = ItemBox
 
-local ProfileStatus = Instance.new("TextLabel")
-ProfileStatus.Size = UDim2.new(0.5, -20, 0, 30)
-ProfileStatus.Position = UDim2.new(0.5, 0, 0, 40)
-ProfileStatus.Text = "🟢 GAG22: Murder Mystery 2 готов к запуску"
-ProfileStatus.TextColor3 = Color3.fromRGB(200, 210, 225)
-ProfileStatus.Font = Enum.Font.GothamMedium
-ProfileStatus.TextSize = 11
-ProfileStatus.TextWrapped = true
-ProfileStatus.TextXAlignment = Enum.TextXAlignment.Left
-ProfileStatus.BackgroundTransparency = 1
-ProfileStatus.Parent = ProfileCard
+        local Dot = Instance.new("TextLabel")
+        Dot.Size = UDim2.new(0, 20, 1, 0)
+        Dot.Position = UDim2.new(0, 10, 0, 0)
+        Dot.Text = "🟢"
+        Dot.TextSize = 8
+        Dot.BackgroundTransparency = 1
+        Dot.Parent = ItemBox
 
-local LaunchHeader = Instance.new("TextLabel")
-LaunchHeader.Size = UDim2.new(1, -50, 0, 15)
-LaunchHeader.Position = UDim2.new(0, 25, 0, 195)
-LaunchHeader.Text = "MURDER MYSTERY 2 • ЗАПУСК"
-LaunchHeader.TextColor3 = Color3.fromRGB(100, 110, 125)
-LaunchHeader.Font = Enum.Font.GothamBold
-LaunchHeader.TextSize = 10
-LaunchHeader.TextXAlignment = Enum.TextXAlignment.Left
-LaunchHeader.BackgroundTransparency = 1
-LaunchHeader.Parent = RightPanel
+        local NameLbl = Instance.new("TextLabel")
+        NameLbl.Size = UDim2.new(0.5, 0, 1, 0)
+        NameLbl.Position = UDim2.new(0, 28, 0, 0)
+        NameLbl.Text = item.name
+        NameLbl.TextColor3 = Color3.fromRGB(200, 210, 220)
+        NameLbl.Font = Enum.Font.GothamMedium
+        NameLbl.TextSize = 11
+        NameLbl.TextXAlignment = Enum.TextXAlignment.Left
+        NameLbl.BackgroundTransparency = 1
+        NameLbl.Parent = ItemBox
 
-local LaunchCard = Instance.new("TextButton")
-LaunchCard.Size = UDim2.new(1, -50, 0, 90)
-LaunchCard.Position = UDim2.new(0, 25, 0, 220)
-LaunchCard.BackgroundColor3 = Color3.fromRGB(12, 32, 48)
-LaunchCard.BorderSizePixel = 0
-LaunchCard.Text = ""
-LaunchCard.AutoButtonColor = false
-LaunchCard.Parent = RightPanel
+        local StatLbl = Instance.new("TextLabel")
+        StatLbl.Size = UDim2.new(0.5, -10, 1, 0)
+        StatLbl.Position = UDim2.new(0.5, 0, 0, 0)
+        StatLbl.Text = item.status
+        StatLbl.TextColor3 = Color3.fromRGB(0, 180, 130)
+        StatLbl.Font = Enum.Font.Gotham
+        StatLbl.TextSize = 10
+        StatLbl.TextXAlignment = Enum.TextXAlignment.Right
+        StatLbl.BackgroundTransparency = 1
+        StatLbl.Parent = ItemBox
+    end
 
-local LaunchCorner = Instance.new("UICorner")
-LaunchCorner.CornerRadius = UDim.new(0, 10)
-LaunchCorner.Parent = LaunchCard
+    local RightPanel = Instance.new("Frame")
+    RightPanel.Size = UDim2.new(0, 645, 1, 0)
+    RightPanel.Position = UDim2.new(0, 315, 0, 0)
+    RightPanel.BackgroundColor3 = Color3.fromRGB(6, 8, 12)
+    RightPanel.BorderSizePixel = 0
+    RightPanel.Parent = BaseFrame
 
-local LaunchTitle = Instance.new("TextLabel")
-LaunchTitle.Size = UDim2.new(1, -60, 0, 25)
-LaunchTitle.Position = UDim2.new(0, 20, 0, 20)
-LaunchTitle.Text = "Запустить GAG22 Hub"
-LaunchTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-LaunchTitle.Font = Enum.Font.GothamBold
-LaunchTitle.TextSize = 16
-LaunchTitle.TextXAlignment = Enum.TextXAlignment.Left
-LaunchTitle.BackgroundTransparency = 1
-LaunchTitle.Parent = LaunchCard
+    local RightCorner = Instance.new("UICorner")
+    RightCorner.CornerRadius = UDim.new(0, 12)
+    RightCorner.Parent = RightPanel
 
-local LaunchSub = Instance.new("TextLabel")
-LaunchSub.Size = UDim2.new(1, -60, 0, 20)
-LaunchSub.Position = UDim2.new(0, 20, 0, 48)
-LaunchSub.Text = "Нажмите для загрузки основного функционала MM2"
-LaunchSub.TextColor3 = Color3.fromRGB(0, 190, 240)
-LaunchSub.Font = Enum.Font.Gotham
-LaunchSub.TextSize = 11
-LaunchSub.TextXAlignment = Enum.TextXAlignment.Left
-LaunchSub.BackgroundTransparency = 1
-LaunchSub.Parent = LaunchCard
+    local LogoIcon = Instance.new("Frame")
+    LogoIcon.Size = UDim2.new(0, 42, 0, 42)
+    LogoIcon.Position = UDim2.new(0, 25, 0, 20)
+    LogoIcon.BackgroundColor3 = Color3.fromRGB(15, 23, 34)
+    LogoIcon.BorderSizePixel = 0
+    LogoIcon.Parent = RightPanel
 
-local Arrow = Instance.new("TextLabel")
-Arrow.Size = UDim2.new(0, 30, 0, 30)
-Arrow.Position = UDim2.new(1, -40, 0, 30)
-Arrow.Text = "›"
-Arrow.TextColor3 = Color3.fromRGB(0, 190, 240)
-Arrow.Font = Enum.Font.GothamBold
-Arrow.TextSize = 26
-Arrow.BackgroundTransparency = 1
-Arrow.Parent = LaunchCard
+    local LogoCorner = Instance.new("UICorner")
+    LogoCorner.CornerRadius = UDim.new(0, 8)
+    LogoCorner.Parent = LogoIcon
 
-LaunchCard.MouseButton1Click:Connect(function()
-    LoaderGui:Destroy()
-    LaunchGAG22Hub()
-end)
+    local LogoText = Instance.new("TextLabel")
+    LogoText.Size = UDim2.new(1, 0, 1, 0)
+    LogoText.Text = "G"
+    LogoText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    LogoText.Font = Enum.Font.GothamBold
+    LogoText.TextSize = 22
+    LogoText.BackgroundTransparency = 1
+    LogoText.Parent = LogoIcon
 
-local BtnInst = Instance.new("TextButton")
-BtnInst.Size = UDim2.new(0, 130, 0, 42)
-BtnInst.Position = UDim2.new(0, 25, 0, 335)
-BtnInst.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
-BtnInst.BorderSizePixel = 0
-BtnInst.Text = "Инструкция"
-BtnInst.TextColor3 = Color3.fromRGB(220, 225, 235)
-BtnInst.Font = Enum.Font.GothamMedium
-BtnInst.TextSize = 13
-BtnInst.Parent = RightPanel
+    local LoaderTitle = Instance.new("TextLabel")
+    LoaderTitle.Size = UDim2.new(0, 200, 0, 42)
+    LoaderTitle.Position = UDim2.new(0, 78, 0, 20)
+    LoaderTitle.Text = "LOADER  8.0.10"
+    LoaderTitle.TextColor3 = Color3.fromRGB(220, 225, 235)
+    LoaderTitle.Font = Enum.Font.GothamBold
+    LoaderTitle.TextSize = 13
+    LoaderTitle.TextXAlignment = Enum.TextXAlignment.Left
+    LoaderTitle.BackgroundTransparency = 1
+    LoaderTitle.Parent = RightPanel
 
-local InstCorner = Instance.new("UICorner")
-InstCorner.CornerRadius = UDim.new(0, 8)
-InstCorner.Parent = BtnInst
+    local ProfileCard = Instance.new("Frame")
+    ProfileCard.Size = UDim2.new(1, -50, 0, 95)
+    ProfileCard.Position = UDim2.new(0, 25, 0, 80)
+    ProfileCard.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
+    ProfileCard.BorderSizePixel = 0
+    ProfileCard.Parent = RightPanel
 
--- Окно Инструкции
-local InstructionFrame = Instance.new("Frame")
-InstructionFrame.Size = UDim2.new(1, -50, 1, -110)
-InstructionFrame.Position = UDim2.new(0, 25, 0, 80)
-InstructionFrame.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
-InstructionFrame.BorderSizePixel = 0
-InstructionFrame.Visible = false
-InstructionFrame.Parent = RightPanel
+    local ProfileCorner = Instance.new("UICorner")
+    ProfileCorner.CornerRadius = UDim.new(0, 10)
+    ProfileCorner.Parent = ProfileCard
 
-local InstCornerFrame = Instance.new("UICorner")
-InstCornerFrame.CornerRadius = UDim.new(0, 10)
-InstCornerFrame.Parent = InstructionFrame
+    local ProfileName = Instance.new("TextLabel")
+    ProfileName.Size = UDim2.new(0.5, 0, 0, 25)
+    ProfileName.Position = UDim2.new(0, 20, 0, 20)
+    ProfileName.Text = LocalPlayer.Name
+    ProfileName.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ProfileName.Font = Enum.Font.GothamBold
+    ProfileName.TextSize = 18
+    ProfileName.TextXAlignment = Enum.TextXAlignment.Left
+    ProfileName.BackgroundTransparency = 1
+    ProfileName.Parent = ProfileCard
 
-local InstHeader = Instance.new("TextLabel")
-InstHeader.Size = UDim2.new(1, -40, 0, 30)
-InstHeader.Position = UDim2.new(0, 20, 0, 15)
-InstHeader.Text = "ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ"
-InstHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
-InstHeader.Font = Enum.Font.GothamBold
-InstHeader.TextSize = 14
-InstHeader.TextXAlignment = Enum.TextXAlignment.Left
-InstHeader.BackgroundTransparency = 1
-InstHeader.Parent = InstructionFrame
+    local ProfileStatus = Instance.new("TextLabel")
+    ProfileStatus.Size = UDim2.new(0.5, -20, 0, 30)
+    ProfileStatus.Position = UDim2.new(0.5, 0, 0, 20)
+    ProfileStatus.Text = "🟢 GAG22: Murder Mystery 2 готов к запуску"
+    ProfileStatus.TextColor3 = Color3.fromRGB(200, 210, 225)
+    ProfileStatus.Font = Enum.Font.GothamMedium
+    ProfileStatus.TextSize = 11
+    ProfileStatus.TextWrapped = true
+    ProfileStatus.TextXAlignment = Enum.TextXAlignment.Left
+    ProfileStatus.BackgroundTransparency = 1
+    ProfileStatus.Parent = ProfileCard
 
-local InstContent = Instance.new("TextLabel")
-InstContent.Size = UDim2.new(1, -40, 1, -110)
-InstContent.Position = UDim2.new(0, 20, 0, 50)
-InstContent.Text = "1. Запустите скрипт через инжектор (например, Xeno).\n2. Нажмите кнопку «Запустить GAG22 Hub» в главном меню.\n3. Перейдите на вкладку Farm в открывшемся интерфейсе MM2 и активируйте Smart Auto Farm (монеты собираются плавно, быстро и без пауз).\n4. На вкладке Combat включите Murderer Aura и автотелепорт к убийце для моментального устранения.\n5. Используйте Role ESP во вкладке Visuals для подсветки ролей игроков."
-InstContent.TextColor3 = Color3.fromRGB(180, 190, 205)
-InstContent.Font = Enum.Font.Gotham
-InstContent.TextSize = 12
-InstContent.TextWrapped = true
-InstContent.TextXAlignment = Enum.TextXAlignment.Left
-InstContent.TextYAlignment = Enum.TextYAlignment.Top
-InstContent.BackgroundTransparency = 1
-InstContent.Parent = InstructionFrame
+    local LaunchCard = Instance.new("TextButton")
+    LaunchCard.Size = UDim2.new(1, -50, 0, 90)
+    LaunchCard.Position = UDim2.new(0, 25, 0, 220)
+    LaunchCard.BackgroundColor3 = Color3.fromRGB(12, 32, 48)
+    LaunchCard.BorderSizePixel = 0
+    LaunchCard.Text = ""
+    LaunchCard.AutoButtonColor = false
+    LaunchCard.Parent = RightPanel
 
-local CloseInstBtn = Instance.new("TextButton")
-CloseInstBtn.Size = UDim2.new(1, -40, 0, 38)
-CloseInstBtn.Position = UDim2.new(0, 20, 1, -48)
-CloseInstBtn.BackgroundColor3 = Color3.fromRGB(28, 36, 50)
-CloseInstBtn.BorderSizePixel = 0
-CloseInstBtn.Text = "Закрыть инструкцию"
-CloseInstBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseInstBtn.Font = Enum.Font.GothamBold
-CloseInstBtn.TextSize = 12
-CloseInstBtn.Parent = InstructionFrame
+    local LaunchCorner = Instance.new("UICorner")
+    LaunchCorner.CornerRadius = UDim.new(0, 10)
+    LaunchCorner.Parent = LaunchCard
 
-local CloseInstCorner = Instance.new("UICorner")
-CloseInstCorner.CornerRadius = UDim.new(0, 8)
-CloseInstCorner.Parent = CloseInstBtn
+    local LaunchTitle = Instance.new("TextLabel")
+    LaunchTitle.Size = UDim2.new(1, -60, 0, 30)
+    LaunchTitle.Position = UDim2.new(0, 20, 0, 18)
+    LaunchTitle.Text = "🚀  Запустить GAG22 Hub (MM2)"
+    LaunchTitle.TextColor3 = Color3.fromRGB(0, 210, 255)
+    LaunchTitle.Font = Enum.Font.GothamBold
+    LaunchTitle.TextSize = 16
+    LaunchTitle.TextXAlignment = Enum.TextXAlignment.Left
+    LaunchTitle.BackgroundTransparency = 1
+    LaunchTitle.Parent = LaunchCard
 
-CloseInstBtn.MouseButton1Click:Connect(function()
-    InstructionFrame.Visible = false
-end)
+    local LaunchSubText = Instance.new("TextLabel")
+    LaunchSubText.Size = UDim2.new(1, -60, 0, 20)
+    LaunchSubText.Position = UDim2.new(0, 20, 0, 48)
+    LaunchSubText.Text = "Нажмите для перехода к запуску версии v8.0.10"
+    LaunchSubText.TextColor3 = Color3.fromRGB(120, 150, 180)
+    LaunchSubText.Font = Enum.Font.Gotham
+    LaunchSubText.TextSize = 11
+    LaunchSubText.TextXAlignment = Enum.TextXAlignment.Left
+    LaunchSubText.BackgroundTransparency = 1
+    LaunchSubText.Parent = LaunchCard
 
-BtnInst.MouseButton1Click:Connect(function()
-    InstructionFrame.Visible = true
-end)
+    -- Кликая по кнопке запуска, скрываем Лоадер, показываем Подписку, а затем запускаем Хаб
+    LaunchCard.MouseButton1Click:Connect(function()
+        LoaderGui:Destroy()
+        ShowSubscribeModal(function()
+            LaunchGAG22Hub()
+        end)
+    end)
+end
 
-local BtnDev = Instance.new("TextButton")
-BtnDev.Size = UDim2.new(0, 130, 0, 42)
-BtnDev.Position = UDim2.new(0, 165, 0, 335)
-BtnDev.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
-BtnDev.BorderSizePixel = 0
-BtnDev.Text = "Устройство"
-BtnDev.TextColor3 = Color3.fromRGB(220, 225, 235)
-BtnDev.Font = Enum.Font.GothamMedium
-BtnDev.TextSize = 13
-BtnDev.Parent = RightPanel
+-- =======================================================
+-- 4. ГУЙ ПРОВЕРКИ ОБНОВЛЕНИЙ (ОТКРЫВАЕТСЯ СРАЗУ ПОСЛЕ ИНЖЕКТА)
+-- =======================================================
+local function ShowUpdateCheckGui()
+    local UpdateGui = Instance.new("ScreenGui")
+    UpdateGui.Name = "GAG22_UpdateCheck"
+    UpdateGui.ResetOnSpawn = false
+    pcall(function() UpdateGui.Parent = CoreGui end)
+    if not UpdateGui.Parent then UpdateGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
-local DevCorner = Instance.new("UICorner")
-DevCorner.CornerRadius = UDim.new(0, 8)
-DevCorner.Parent = BtnDev
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0, 400, 0, 190)
+    Frame.Position = UDim2.new(0.5, -200, 0.5, -95)
+    Frame.BackgroundColor3 = Color3.fromRGB(11, 14, 20)
+    Frame.BorderSizePixel = 0
+    Frame.Parent = UpdateGui
 
-local CloseArrow = Instance.new("TextButton")
-CloseArrow.Size = UDim2.new(0, 30, 0, 30)
-CloseArrow.Position = UDim2.new(1, -45, 0, 341)
-CloseArrow.BackgroundTransparency = 1
-CloseArrow.Text = "v"
-CloseArrow.TextColor3 = Color3.fromRGB(100, 110, 125)
-CloseArrow.Font = Enum.Font.GothamBold
-CloseArrow.TextSize = 14
-CloseArrow.Parent = RightPanel
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 12)
+    Corner.Parent = Frame
 
-CloseArrow.MouseButton1Click:Connect(function()
-    LoaderGui:Destroy()
-end)       
+    local Stroke = Instance.new("UIStroke")
+    Stroke.Color = Color3.fromRGB(0, 210, 255)
+    Stroke.Thickness = 1.5
+    Stroke.Parent = Frame
+
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, 0, 0, 35)
+    Title.Position = UDim2.new(0, 0, 0, 18)
+    Title.Text = "GAG22 LOADER | CHECKING UPDATES"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 14
+    Title.BackgroundTransparency = 1
+    Title.Parent = Frame
+
+    local Status = Instance.new("TextLabel")
+    Status.Size = UDim2.new(1, -40, 0, 25)
+    Status.Position = UDim2.new(0, 20, 0, 60)
+    Status.Text = "Подключение к серверу обновлений..."
+    Status.TextColor3 = Color3.fromRGB(150, 160, 175)
+    Status.Font = Enum.Font.GothamMedium
+    Status.TextSize = 12
+    Status.BackgroundTransparency = 1
+    Status.Parent = Frame
+
+    local BarBg = Instance.new("Frame")
+    BarBg.Size = UDim2.new(1, -40, 0, 8)
+    BarBg.Position = UDim2.new(0, 20, 0, 105)
+    BarBg.BackgroundColor3 = Color3.fromRGB(20, 26, 36)
+    BarBg.BorderSizePixel = 0
+    BarBg.Parent = Frame
+
+    local BarCorner = Instance.new("UICorner")
+    BarCorner.CornerRadius = UDim.new(1, 0)
+    BarCorner.Parent = BarBg
+
+    local BarFill = Instance.new("Frame")
+    BarFill.Size = UDim2.new(0, 0, 1, 0)
+    BarFill.BackgroundColor3 = Color3.fromRGB(0, 210, 255)
+    BarFill.BorderSizePixel = 0
+    BarFill.Parent = BarBg
+
+    local FillCorner = Instance.new("UICorner")
+    FillCorner.CornerRadius = UDim.new(1, 0)
+    FillCorner.Parent = BarFill
+
+    -- Симуляция проверки обновлений
+    task.spawn(function()
+        TweenService:Create(BarFill, TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0.55, 0, 1, 0)}):Play()
+        task.wait(1.0)
+        
+        Status.Text = "Синхронизация последней версии..."
+        TweenService:Create(BarFill, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(1, 0, 1, 0)}):Play()
+        task.wait(0.8)
+        
+        Status.Text = "🟢 Версия актуальна! (v8.0.10)"
+        Status.TextColor3 = Color3.fromRGB(0, 230, 160)
+        task.wait(0.6)
+        
+        UpdateGui:Destroy()
+        ShowLoaderGui() -- Переход к основному GUI лоадера
+    end)
+end
+
+-- Старт цепочки при выполнении инжекта
+ShowUpdateCheckGui()
