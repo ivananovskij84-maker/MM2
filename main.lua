@@ -1,5 +1,5 @@
 -- =======================================================
--- GAG22 LOADER v8.0.11 | FIXED AUTO-FARM RESUME
+-- GAG22 LOADER v8.0.11 | FiXED AUTO-FARM RESUME
 -- =======================================================
 local CG, Plrs, UIS, TS, RS, WS = game:GetService("CoreGui"), game:GetService("Players"), game:GetService("UserInputService"), game:GetService("TweenService"), game:GetService("RunService"), game:GetService("Workspace")
 local LP = Plrs.LocalPlayer or Plrs:GetPropertyChangedSignal("LocalPlayer"):Wait()
